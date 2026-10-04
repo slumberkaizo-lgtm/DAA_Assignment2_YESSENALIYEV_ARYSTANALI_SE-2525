@@ -31,3 +31,19 @@ tasks.register('benchmark', JavaExec) {
     javaLauncher = javaToolchains.launcherFor(java.toolchain)
     workingDir = layout.projectDirectory.asFile
 }
+
+tasks.register('plotDependencies', Exec) {
+    group = 'application'
+    description = 'Installs the chart dependencies into the selected Python environment.'
+    workingDir = layout.projectDirectory.asFile
+    commandLine providers.gradleProperty('pythonExecutable').getOrElse('python'),
+            '-m', 'pip', 'install', '-r', 'scripts/requirements-plots.txt'
+}
+
+tasks.register('plots', Exec) {
+    group = 'application'
+    description = 'Generates five PNG charts from the existing results/results.csv.'
+    workingDir = layout.projectDirectory.asFile
+    commandLine providers.gradleProperty('pythonExecutable').getOrElse('python'),
+            'scripts/plot_results.py'
+}
