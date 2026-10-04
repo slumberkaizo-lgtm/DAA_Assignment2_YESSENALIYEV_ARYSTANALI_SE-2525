@@ -5,6 +5,11 @@ import structures.DynamicArray;
 import structures.MinHeap;
 import structures.MyLinkedList;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Locale;
 import java.util.Random;
@@ -28,7 +33,7 @@ public class Benchmark {
     private record InsertRemoveExpected(int[] remaining, int[] removed) {
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         Result[] accessResults = runRandomAccess();
         Result[] searchResults = runSearch();
         Result[] insertRemoveResults = runInsertRemove();
@@ -42,6 +47,8 @@ public class Benchmark {
         System.arraycopy(priorityResults, 0, results,
                 accessResults.length + searchResults.length + insertRemoveResults.length,
                 priorityResults.length);
+        Path csvPath = Path.of("results", "results.csv");
+        writeCsv(results, csvPath);
         System.out.println("W1 / W2 / W3 / W4: 1 warm-up, 5 measured runs, median time");
         System.out.printf("%-10s %-8s %-15s %8s %12s %15s %12s %12s%n",
                 "workload", "variant", "structure", "n", "time_ms", "steps", "moves", "comparisons");
@@ -49,6 +56,21 @@ public class Benchmark {
             System.out.printf(Locale.ROOT, "%-10s %-8s %-15s %8d %12.3f %15d %12d %12d%n",
                     result.workload(), result.variant(), result.structure(), result.n(), result.timeMillis(),
                     result.steps(), result.moves(), result.comparisons());
+        }
+        System.out.println("Saved " + results.length + " results to " + csvPath);
+    }
+
+    private static void writeCsv(Result[] results, Path path) throws IOException {
+        Files.createDirectories(path.getParent());
+        try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+            writer.write("workload,variant,structure,n,time_ms,steps,moves,comparisons");
+            writer.newLine();
+            for (Result result : results) {
+                writer.write(String.format(Locale.ROOT, "%s,%s,%s,%d,%.6f,%d,%d,%d",
+                        result.workload(), result.variant(), result.structure(), result.n(),
+                        result.timeMillis(), result.steps(), result.moves(), result.comparisons()));
+                writer.newLine();
+            }
         }
     }
 

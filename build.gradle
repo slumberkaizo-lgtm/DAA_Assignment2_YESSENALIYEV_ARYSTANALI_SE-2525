@@ -21,3 +21,13 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
+tasks.register('benchmark', JavaExec) {
+    group = 'application'
+    description = 'Runs W1-W4 and writes results/results.csv.'
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'benchmark.Benchmark'
+    javaLauncher = javaToolchains.launcherFor(java.toolchain)
+    workingDir = layout.projectDirectory.asFile
+}
