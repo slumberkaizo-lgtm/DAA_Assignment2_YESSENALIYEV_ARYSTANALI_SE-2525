@@ -1,9 +1,16 @@
 package structures;
 
+import metrics.Metrics;
+
 /** An array-based binary min heap of primitive int values. */
 public class MinHeap {
     private int[] data = new int[10];
     private int size;
+    private final Metrics metrics = new Metrics();
+
+    public Metrics getMetrics() {
+        return metrics;
+    }
 
     public int size() {
         return size;
@@ -18,15 +25,19 @@ public class MinHeap {
 
     public int peekMin() {
         checkNotEmpty();
+        metrics.recordStep();
         return data[0];
     }
 
     public int extractMin() {
         checkNotEmpty();
+        metrics.recordStep();
         int minimum = data[0];
         size--;
         if (size > 0) {
+            metrics.recordStep();
             data[0] = data[size];
+            metrics.recordMove();
         }
         data[size] = 0;
         if (size > 0) {
@@ -38,6 +49,9 @@ public class MinHeap {
     private void bubbleUp(int index) {
         while (index > 0) {
             int parent = (index - 1) / 2;
+            metrics.recordStep();
+            metrics.recordStep();
+            metrics.recordComparison();
             if (data[parent] <= data[index]) {
                 break;
             }
@@ -52,9 +66,17 @@ public class MinHeap {
             int left = 2 * index + 1;
             int right = left + 1;
             int smallerChild = left;
-            if (right < size && data[right] < data[left]) {
-                smallerChild = right;
+            if (right < size) {
+                metrics.recordStep();
+                metrics.recordStep();
+                metrics.recordComparison();
+                if (data[right] < data[left]) {
+                    smallerChild = right;
+                }
             }
+            metrics.recordStep();
+            metrics.recordStep();
+            metrics.recordComparison();
             if (data[index] <= data[smallerChild]) {
                 break;
             }
@@ -64,9 +86,13 @@ public class MinHeap {
     }
 
     private void swap(int first, int second) {
+        metrics.recordStep();
         int temporary = data[first];
+        metrics.recordStep();
         data[first] = data[second];
+        metrics.recordMove();
         data[second] = temporary;
+        metrics.recordMove();
     }
 
     private void checkNotEmpty() {
@@ -79,7 +105,9 @@ public class MinHeap {
         if (size == data.length) {
             int[] expanded = new int[data.length * 2];
             for (int i = 0; i < size; i++) {
+                metrics.recordStep();
                 expanded[i] = data[i];
+                metrics.recordMove();
             }
             data = expanded;
         }
