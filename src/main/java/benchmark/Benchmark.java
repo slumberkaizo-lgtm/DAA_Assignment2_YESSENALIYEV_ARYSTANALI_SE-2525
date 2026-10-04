@@ -2,6 +2,7 @@ package benchmark;
 
 import metrics.Metrics;
 import structures.DynamicArray;
+import structures.MinHeap;
 import structures.MyLinkedList;
 
 import java.util.Arrays;
@@ -31,12 +32,17 @@ public class Benchmark {
         Result[] accessResults = runRandomAccess();
         Result[] searchResults = runSearch();
         Result[] insertRemoveResults = runInsertRemove();
+        Result[] priorityResults = runPriorityProcessing();
         Result[] results = Arrays.copyOf(accessResults,
-                accessResults.length + searchResults.length + insertRemoveResults.length);
+                accessResults.length + searchResults.length + insertRemoveResults.length
+                        + priorityResults.length);
         System.arraycopy(searchResults, 0, results, accessResults.length, searchResults.length);
         System.arraycopy(insertRemoveResults, 0, results,
                 accessResults.length + searchResults.length, insertRemoveResults.length);
-        System.out.println("W1 / W2 / W3: 1 warm-up, 5 measured runs, median time");
+        System.arraycopy(priorityResults, 0, results,
+                accessResults.length + searchResults.length + insertRemoveResults.length,
+                priorityResults.length);
+        System.out.println("W1 / W2 / W3 / W4: 1 warm-up, 5 measured runs, median time");
         System.out.printf("%-10s %-8s %-15s %8s %12s %15s %12s %12s%n",
                 "workload", "variant", "structure", "n", "time_ms", "steps", "moves", "comparisons");
         for (Result result : results) {
@@ -121,6 +127,75 @@ public class Benchmark {
             }
         }
         return results;
+    }
+
+    public static Result[] runPriorityProcessing() {
+        Random random = new Random(42);
+        Result[] results = new Result[SIZES.length];
+        for (int i = 0; i < SIZES.length; i++) {
+            int[] values = new int[SIZES[i]];
+            for (int j = 0; j < values.length; j++) {
+                values[j] = random.nextInt();
+            }
+            int[] expected = values.clone();
+            Arrays.sort(expected);
+            results[i] = measurePriorityProcessing(values, expected);
+        }
+        return results;
+    }
+
+    private static Result measurePriorityProcessing(int[] values, int[] expected) {
+        long[] times = new long[MEASURED_RUNS];
+        Run baseline = null;
+        Run measured = null;
+        for (int run = 0; run < WARMUP_RUNS + MEASURED_RUNS; run++) {
+            Run current = runHeapPriorityProcessing(values, expected);
+            if (baseline == null) {
+                baseline = current;
+            } else if (current.steps() != baseline.steps() || current.moves() != baseline.moves()
+                    || current.comparisons() != baseline.comparisons()) {
+                throw new IllegalStateException("W4 operation counts differ between runs");
+            }
+            if (run >= WARMUP_RUNS) {
+                times[run - WARMUP_RUNS] = current.elapsedNanos();
+                measured = current;
+            }
+        }
+        Arrays.sort(times);
+        return new Result("W4", "-", "MinHeap", values.length,
+                times[MEASURED_RUNS / 2] / 1_000_000.0,
+                measured.steps(), measured.moves(), measured.comparisons());
+    }
+
+    private static Run runHeapPriorityProcessing(int[] values, int[] expected) {
+        MinHeap heap = new MinHeap();
+        Metrics metrics = heap.getMetrics();
+        metrics.reset();
+        int[] extracted = new int[values.length];
+
+        // W4 measures both building the heap and extracting every element.
+        long start = System.nanoTime();
+        for (int value : values) {
+            heap.insert(value);
+        }
+        for (int i = 0; i < extracted.length; i++) {
+            extracted[i] = heap.extractMin();
+        }
+        long elapsed = System.nanoTime() - start;
+
+        Run result = new Run(elapsed, metrics.getSteps(), metrics.getMoves(), metrics.getComparisons());
+        for (int i = 1; i < extracted.length; i++) {
+            if (extracted[i - 1] > extracted[i]) {
+                throw new IllegalStateException("W4 extraction is not non-decreasing at index " + i);
+            }
+        }
+        if (!Arrays.equals(extracted, expected) || heap.size() != 0) {
+            throw new IllegalStateException("W4 extracted values differ from the sorted input");
+        }
+        if (result.steps() <= 0 || result.moves() <= 0 || result.comparisons() <= 0) {
+            throw new IllegalStateException("W4 recorded unexpected operation counts");
+        }
+        return result;
     }
 
     private static InsertRemoveExpected simulateInsertRemove(int[] values, int[] inserted,
