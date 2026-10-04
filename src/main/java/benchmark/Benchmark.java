@@ -13,6 +13,7 @@ public class Benchmark {
     private static final int[] SIZES = {100, 1_000, 10_000, 100_000};
     private static final int ACCESS_COUNT = 10_000;
     private static final int SEARCH_COUNT = 1_000;
+    private static final int INSERT_REMOVE_COUNT = 1_000;
     private static final int WARMUP_RUNS = 1;
     private static final int MEASURED_RUNS = 5;
 
@@ -23,17 +24,24 @@ public class Benchmark {
     private record Run(long elapsedNanos, long steps, long moves, long comparisons) {
     }
 
+    private record InsertRemoveExpected(int[] remaining, int[] removed) {
+    }
+
     public static void main(String[] args) {
         Result[] accessResults = runRandomAccess();
         Result[] searchResults = runSearch();
-        Result[] results = Arrays.copyOf(accessResults, accessResults.length + searchResults.length);
+        Result[] insertRemoveResults = runInsertRemove();
+        Result[] results = Arrays.copyOf(accessResults,
+                accessResults.length + searchResults.length + insertRemoveResults.length);
         System.arraycopy(searchResults, 0, results, accessResults.length, searchResults.length);
-        System.out.println("W1 Random Access / W2 Search: 1 warm-up, 5 measured runs, median time");
-        System.out.printf("%-10s %-15s %8s %12s %15s %10s %12s%n",
-                "workload", "structure", "n", "time_ms", "steps", "moves", "comparisons");
+        System.arraycopy(insertRemoveResults, 0, results,
+                accessResults.length + searchResults.length, insertRemoveResults.length);
+        System.out.println("W1 / W2 / W3: 1 warm-up, 5 measured runs, median time");
+        System.out.printf("%-10s %-8s %-15s %8s %12s %15s %12s %12s%n",
+                "workload", "variant", "structure", "n", "time_ms", "steps", "moves", "comparisons");
         for (Result result : results) {
-            System.out.printf(Locale.ROOT, "%-10s %-15s %8d %12.3f %15d %10d %12d%n",
-                    result.workload(), result.structure(), result.n(), result.timeMillis(),
+            System.out.printf(Locale.ROOT, "%-10s %-8s %-15s %8d %12.3f %15d %12d %12d%n",
+                    result.workload(), result.variant(), result.structure(), result.n(), result.timeMillis(),
                     result.steps(), result.moves(), result.comparisons());
         }
     }
@@ -91,6 +99,153 @@ public class Benchmark {
             results[resultIndex++] = measureSearch(values, queries, expectedComparisons, false);
         }
         return results;
+    }
+
+    public static Result[] runInsertRemove() {
+        Random random = new Random(42);
+        Result[] results = new Result[SIZES.length * 4];
+        int resultIndex = 0;
+        for (int n : SIZES) {
+            int[] values = new int[n];
+            for (int i = 0; i < n; i++) {
+                values[i] = random.nextInt();
+            }
+            int[] inserted = new int[INSERT_REMOVE_COUNT];
+            for (int i = 0; i < inserted.length; i++) {
+                inserted[i] = random.nextInt();
+            }
+            for (boolean atHead : new boolean[]{true, false}) {
+                InsertRemoveExpected expected = simulateInsertRemove(values, inserted, atHead);
+                results[resultIndex++] = measureInsertRemove(values, inserted, expected, atHead, true);
+                results[resultIndex++] = measureInsertRemove(values, inserted, expected, atHead, false);
+            }
+        }
+        return results;
+    }
+
+    private static InsertRemoveExpected simulateInsertRemove(int[] values, int[] inserted,
+                                                              boolean atHead) {
+        int[] reference = Arrays.copyOf(values, values.length + inserted.length);
+        int size = values.length;
+        for (int value : inserted) {
+            int index = atHead ? 0 : size / 2;
+            System.arraycopy(reference, index, reference, index + 1, size - index);
+            reference[index] = value;
+            size++;
+        }
+        int[] removed = new int[INSERT_REMOVE_COUNT];
+        for (int i = 0; i < removed.length; i++) {
+            int index = atHead ? 0 : size / 2;
+            removed[i] = reference[index];
+            System.arraycopy(reference, index + 1, reference, index, size - index - 1);
+            size--;
+        }
+        return new InsertRemoveExpected(Arrays.copyOf(reference, size), removed);
+    }
+
+    private static Result measureInsertRemove(int[] values, int[] inserted,
+                                               InsertRemoveExpected expected,
+                                               boolean atHead, boolean useArray) {
+        long[] times = new long[MEASURED_RUNS];
+        Run baseline = null;
+        Run measured = null;
+        for (int run = 0; run < WARMUP_RUNS + MEASURED_RUNS; run++) {
+            Run current = useArray
+                    ? runArrayInsertRemove(values, inserted, expected, atHead)
+                    : runListInsertRemove(values, inserted, expected, atHead);
+            if (baseline == null) {
+                baseline = current;
+            } else if (current.steps() != baseline.steps() || current.moves() != baseline.moves()
+                    || current.comparisons() != baseline.comparisons()) {
+                throw new IllegalStateException("W3 operation counts differ between runs");
+            }
+            if (run >= WARMUP_RUNS) {
+                times[run - WARMUP_RUNS] = current.elapsedNanos();
+                measured = current;
+            }
+        }
+        Arrays.sort(times);
+        return new Result("W3", atHead ? "head" : "middle",
+                useArray ? "DynamicArray" : "MyLinkedList", values.length,
+                times[MEASURED_RUNS / 2] / 1_000_000.0,
+                measured.steps(), measured.moves(), measured.comparisons());
+    }
+
+    private static Run runArrayInsertRemove(int[] values, int[] inserted,
+                                             InsertRemoveExpected expected, boolean atHead) {
+        DynamicArray array = new DynamicArray();
+        for (int value : values) {
+            array.add(value);
+        }
+        Metrics metrics = array.getMetrics();
+        metrics.reset();
+        int[] removed = new int[INSERT_REMOVE_COUNT];
+
+        long start = System.nanoTime();
+        for (int value : inserted) {
+            int index = atHead ? 0 : array.size() / 2;
+            array.add(index, value);
+        }
+        for (int i = 0; i < removed.length; i++) {
+            int index = atHead ? 0 : array.size() / 2;
+            removed[i] = array.remove(index);
+        }
+        long elapsed = System.nanoTime() - start;
+
+        // Capture the workload counters before validation reads any elements.
+        Run result = new Run(elapsed, metrics.getSteps(), metrics.getMoves(), metrics.getComparisons());
+        verifyInsertRemove(removed, array.size(), expected, result);
+        for (int i = 0; i < expected.remaining().length; i++) {
+            if (array.get(i) != expected.remaining()[i]) {
+                throw new IllegalStateException("W3 DynamicArray contents differ at index " + i);
+            }
+        }
+        return result;
+    }
+
+    private static Run runListInsertRemove(int[] values, int[] inserted,
+                                            InsertRemoveExpected expected, boolean atHead) {
+        MyLinkedList list = new MyLinkedList();
+        for (int value : values) {
+            list.add(value);
+        }
+        Metrics metrics = list.getMetrics();
+        metrics.reset();
+        int[] removed = new int[INSERT_REMOVE_COUNT];
+
+        long start = System.nanoTime();
+        for (int value : inserted) {
+            int index = atHead ? 0 : list.size() / 2;
+            list.add(index, value);
+        }
+        for (int i = 0; i < removed.length; i++) {
+            int index = atHead ? 0 : list.size() / 2;
+            removed[i] = list.remove(index);
+        }
+        long elapsed = System.nanoTime() - start;
+
+        Run result = new Run(elapsed, metrics.getSteps(), metrics.getMoves(), metrics.getComparisons());
+        verifyInsertRemove(removed, list.size(), expected, result);
+        // Drain the disposable list in O(n) outside the timed section.
+        for (int i = 0; i < expected.remaining().length; i++) {
+            if (list.remove(0) != expected.remaining()[i]) {
+                throw new IllegalStateException("W3 MyLinkedList contents differ at index " + i);
+            }
+        }
+        if (list.size() != 0) {
+            throw new IllegalStateException("W3 MyLinkedList validation did not drain the list");
+        }
+        return result;
+    }
+
+    private static void verifyInsertRemove(int[] removed, int size,
+                                            InsertRemoveExpected expected, Run result) {
+        if (!Arrays.equals(removed, expected.removed()) || size != expected.remaining().length) {
+            throw new IllegalStateException("W3 returned incorrect removed values or final size");
+        }
+        if (result.steps() <= 0 || result.moves() <= 0 || result.comparisons() != 0) {
+            throw new IllegalStateException("W3 recorded unexpected operation counts");
+        }
     }
 
     private static Result measureSearch(int[] values, int[] queries,
