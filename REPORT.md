@@ -313,7 +313,9 @@ explicitly, and logarithmic scales are labelled.
 
 Both structures have zero moves and zero value comparisons for this workload.
 The array performs one read per query; the list follows a number of links
-equal to the queried index. [W1 chart](results/plots/w1.png).
+equal to the queried index.
+
+![W1 - Random Access: DynamicArray and MyLinkedList performance](results/plots/w1.png)
 
 ### W2 - Search
 
@@ -326,7 +328,9 @@ equal to the queried index. [W1 chart](results/plots/w1.png).
 
 Moves are zero. Array steps equal comparisons; list steps equal comparisons
 minus 500 because each successful search returns before following the matching
-node's next link. [W2 chart](results/plots/w2.png).
+node's next link.
+
+![W2 - Search: DynamicArray and MyLinkedList performance](results/plots/w2.png)
 
 ### W3 - Insert & Remove
 
@@ -343,7 +347,8 @@ DynamicArray steps equal moves plus 1,000 reads of the removed values. The list
 performs 1,000 steps for head removal and 3,000 structural-link writes for the
 combined operations, independent of the initial size. Array moves include
 resize copies when the workload exceeds its initially available capacity.
-[W3 head chart](results/plots/w3_head.png).
+
+![W3 - Head Insert and Remove: DynamicArray and MyLinkedList performance](results/plots/w3_head.png)
 
 #### Middle
 
@@ -360,7 +365,8 @@ array reads while shifting and link traversal in the list. Only link changes
 count as list moves, so its small move count does not capture traversal cost.
 The expected final sequence is simulated explicitly: removing at the current
 middle is not assumed to undo all earlier middle insertions.
-[W3 middle chart](results/plots/w3_middle.png).
+
+![W3 - Middle Insert and Remove: DynamicArray and MyLinkedList performance](results/plots/w3_middle.png)
 
 ### W4 - Priority Processing
 
@@ -373,7 +379,8 @@ middle is not assumed to undo all earlier middle insertions.
 
 All extractions matched the sorted input. The complete workload has an
 O(n log(n + 1)) upper bound, including O(n) total capacity-growth work.
-[W4 chart](results/plots/w4.png).
+
+![W4 - Priority Processing: MinHeap performance](results/plots/w4.png)
 
 ## Performance Discussion
 
